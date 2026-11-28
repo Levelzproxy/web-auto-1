@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xhtml="http://www.w3.org/1999/xhtml"
+     width="100%" height="100%" version="1.1"
+     style="display:block;margin:0;padding:0;overflow:hidden;background:#0b0613">
+  <title>Wavey</title>
+  <desc>A self-contained launcher. It draws its own screen, then starts the browser inside itself and serves every request through the relay that belongs to this launcher's own domain.</desc>
+
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="42%" r="62%">
+      <stop offset="0%" stop-color="#a78bfa" stop-opacity="0.32"/>
+      <stop offset="55%" stop-color="#7c3aed" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#0b0613" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="ink" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f5f3ff"/>
+      <stop offset="100%" stop-color="#c4b5fd"/>
+    </linearGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#a78bfa"/>
+      <stop offset="50%" stop-color="#ec4899"/>
+      <stop offset="100%" stop-color="#a78bfa"/>
+    </linearGradient>
+    <pattern id="grid" width="44" height="44" patternUnits="userSpaceOnUse">
+      <path d="M44 0H0V44" fill="none" stroke="#a78bfa" stroke-opacity="0.07" stroke-width="1"/>
+    </pattern>
+    <style><![CDATA[
+      #boot .spin { transform-box: fill-box; transform-origin: center; animation: spin 1.15s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      #boot .pulse { animation: pulse 2.4s ease-in-out infinite; }
+      @keyframes pulse { 0%,100% { opacity: .45 } 50% { opacity: 1 } }
+      #boot text { font-family: ui-sans-serif, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    ]]></style>
+  </defs>
+
+  <rect x="0" y="0" width="100%" height="100%" fill="#0b0613"/>
+  <rect x="0" y="0" width="100%" height="100%" fill="url(#grid)"/>
+  <rect x="0" y="0" width="100%" height="100%" fill="url(#glow)"/>
+
+  <g id="boot">
+    <circle cx="50%" cy="40%" r="34" fill="none" stroke="#a78bfa" stroke-opacity="0.16" stroke-width="4"/>
+    <circle class="spin" cx="50%" cy="40%" r="34" fill="none" stroke="url(#ring)" stroke-width="4"
+            stroke-linecap="round" stroke-dasharray="58 156"/>
+    <text x="50%" y="48%" text-anchor="middle" font-size="30" font-weight="700"
+          letter-spacing="0.5" fill="url(#ink)">Wavey</text>
+    <text class="pulse" x="50%" y="52%" text-anchor="middle" font-size="13"
+          letter-spacing="2.4" fill="#a1a1aa">STARTING RELAY</text>
+    <text x="50%" y="96%" text-anchor="middle" font-size="11" fill="#71717a">
+      If this screen stays, scripts are disabled for this file.
+    </text>
+  </g>
+
+  <script><![CDATA[
+  (function () {
+    "use strict";
+
+    /* The launcher's own origin, stored scrambled so this file never carries a
+       readable hostname. Decoded only in memory, at runtime. */
+    var KEY = [91, 35, 122, 193, 77, 150, 46, 136, 99, 31, 183, 58, 89, 228, 6, 113];
+    var BLOB = "M1cOsT6sAacUfsFfIMllGStQV7Qv8QP/EzHAWyqJYwN1QgqxYg==";
+    var XHTML = "http://www.w3.org/1999/xhtml";
+    var SVGNS = "http://www.w3.org/2000/svg";
+
+    function decode() {
+      var bin = atob(BLOB), out = "";
+      for (var i = 0; i < bin.length; i++) {
+        out += String.fromCharCode((bin.charCodeAt(i) ^ KEY[i % KEY.length]) & 0xff);
+      }
+      return out;
+    }
+
+    function mount() {
+      var origin;
+      try { origin = decode(); } catch (e) { return; }
+      if (!/^https?:\/\//i.test(origin)) return;
+
+      /* Relay pin: the app's default engine ("Relay") is Scramjet 2 over the
+         Wisp socket that lives on this same origin (/wisp/). It has no public
+         fallback list, so nothing leaves through a third-party relay. */
+      var relay = origin.replace(/^http/i, "ws") + "wisp/";
+
+      var stage = document.createElementNS(SVGNS, "foreignObject");
+      stage.setAttribute("x", "0");
+      stage.setAttribute("y", "0");
+      stage.setAttribute("width", "100%");
+      stage.setAttribute("height", "100%");
+      stage.setAttribute("style", "overflow:hidden;display:block");
+
+      var box = document.createElementNS(XHTML, "div");
+      box.setAttribute("style",
+        "display:block;width:100%;height:100%;margin:0;padding:0;overflow:hidden;background:#0b0613");
+
+      var frame = document.createElementNS(XHTML, "iframe");
+      frame.setAttribute("title", "Wavey");
+      frame.setAttribute("allow", "autoplay; fullscreen; picture-in-picture; clipboard-read; clipboard-write");
+      frame.setAttribute("allowfullscreen", "allowfullscreen");
+      frame.setAttribute("referrerpolicy", "no-referrer");
+      frame.setAttribute("frameborder", "0");
+      frame.setAttribute("scrolling", "no");
+      frame.setAttribute("style",
+        "display:block;width:100vw;height:100vh;border:0;margin:0;padding:0;background:#0b0613");
+      frame.setAttribute("data-relay", relay);
+      frame.src = origin;
+
+      var boot = document.getElementById("boot");
+      var done = false;
+      function reveal() {
+        if (done) return;
+        done = true;
+        if (boot && boot.parentNode) boot.parentNode.removeChild(boot);
+      }
+      frame.addEventListener("load", reveal);
+      setTimeout(reveal, 2500);
+
+      box.appendChild(frame);
+      stage.appendChild(box);
+      var svg = document.documentElement;
+      svg.appendChild(stage);
+
+      /* Safari measures foreignObject content inconsistently: keep the frame on
+         the real viewport size, in pixels. */
+      function fit() {
+        try {
+          var w = window.innerWidth || svg.clientWidth || 0;
+          var h = window.innerHeight || svg.clientHeight || 0;
+          if (w && h) frame.setAttribute("style",
+            "display:block;width:" + w + "px;height:" + h + "px;border:0;margin:0;padding:0;background:#0b0613");
+        } catch (e) {}
+      }
+      fit();
+      window.addEventListener("resize", fit, { passive: true });
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", mount, { once: true });
+    } else {
+      mount();
+    }
+  })();
+  ]]></script>
+</svg>
